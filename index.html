@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hunger Games · Direttore Ollama</title>
+<style>
+  :root { color-scheme: dark; --bg: #111; --panel: #1b1b1b; --line: #2e2e2e; --text: #e8e6e3; --muted: #9a958f; --fire: #ff7a2f; }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; height: 100vh; display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0; font-size: 17px; color: var(--fire); }
+  #info { flex: 1; color: var(--muted); }
+  small { color: var(--muted); }
+  button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button.primary { background: var(--fire); border-color: var(--fire); color: #111; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr) 440px; }
+  main > section { min-height: 0; overflow: auto; padding: 12px; }
+  main > section + section { border-left: 1px solid var(--line); }
+  h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  #board ol { margin: 0 0 16px; padding-left: 22px; }
+  #board li { padding: 2px 0; cursor: pointer; }
+  #board li:hover { color: var(--fire); }
+  #list h3 { margin: 10px 0 2px; font-size: 12px; color: var(--muted); }
+  .trib { display: flex; gap: 6px; align-items: center; width: 100%; padding: 3px 4px; border: 0; background: none; text-align: left; }
+  .trib:hover { background: var(--panel); }
+  .trib small { margin-left: auto; font-size: 11px; color: #7bd88f; white-space: nowrap; }
+  .trib.DEAD { color: #6b6b6b; text-decoration: line-through; }
+  .trib.DEAD small { color: #e05252; }
+  .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+  #map { --cols: 33; --rows: 33; width: min(100%, calc((100vh - 160px) * var(--cols) / var(--rows))); aspect-ratio: var(--cols) / var(--rows);
+         margin: 0 auto; display: grid; grid-template: repeat(var(--rows), 1fr) / repeat(var(--cols), 1fr); container-type: inline-size; }
+  #map > div { display: grid; place-items: center; overflow: hidden; font-size: calc(50cqw / var(--cols)); }
+  #map .ax { font-size: calc(40cqw / var(--cols)); color: var(--muted); }
+  #map .out { filter: brightness(.35) grayscale(.6); }
+  #map [data-id] { cursor: pointer; }
+  .tok { width: 90%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; color: #111; font-weight: 700; box-shadow: 0 0 0 1px #000; }
+  .tok.many { box-shadow: 0 0 0 2px #fff; }
+  #legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  #legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; }
+  #log article { margin-bottom: 12px; padding: 4px 0 4px 10px; border-left: 3px solid var(--line); }
+  #log .event, #log .interview { font-size: 13px; }
+  #log .event { border-color: #8a6d3b; }
+  #log .report, #log .interview { border-color: #4a90d9; }
+  #log .day { border-color: var(--fire); }
+  #log .win { border-color: gold; }
+  #log .error { border-color: #e05252; color: #f19999; }
+  #log h3 { margin: 0 0 4px; font-size: 13px; }
+  #log p { margin: 0; white-space: pre-wrap; }
+  table { border-collapse: collapse; margin: 6px 0; font-size: 12px; }
+  th, td { padding: 2px 6px; border: 1px solid var(--line); text-align: left; }
+  #start { flex: 1; min-height: 0; overflow: auto; padding: 20px; display: grid; grid-template-columns: minmax(0, 520px) minmax(0, 1fr); gap: 32px; align-items: start; }
+  #start h2 { font-size: 15px; color: var(--fire); }
+  #start p { color: var(--muted); }
+  #err { color: #f19999; }
+  details { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; }
+  dialog { max-width: min(560px, 94vw); background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+  dialog::backdrop { background: #000b; }
+  textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); font: 13px/1.4 ui-monospace, monospace; }
+  meter { width: 100px; vertical-align: middle; }
+  @media (max-width: 1100px) {
+    body { height: auto; }
+    main, #start { grid-template-columns: minmax(0, 1fr); }
+    main > section + section { border-left: 0; border-top: 1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🔥 Hunger Games</h1>
+  <span id="info">Connessione…</span>
+  <button id="next" class="primary" disabled>▶ Avanti</button>
+  <label><input type="checkbox" id="auto"> Auto</label>
+  <button id="editions">📜 Edizioni</button>
+</header>
+
+<section id="start" hidden>
+  <div>
+    <h2>Nuova edizione · <span id="ed-next"></span></h2>
+    <p>Scrivi da 0 a 24 tributi, uno per riga: i posti vuoti li riempie il pool con personaggi casuali.
+       I distretti li sceglie il Direttore; chi non è un personaggio che conosce riceve attributi casuali.
+       Chi è morto o ha vinto in un'edizione passata non può tornare nell'arena. Ogni edizione ha un'arena nuova,
+       con dimensioni, forma e biomi casuali.</p>
+    <textarea id="names" rows="14" spellcheck="false" placeholder="Lascia vuoto per 24 tributi casuali"></textarea>
+    <p><label><input type="checkbox" id="memorial"> Edizione della memoria: il pool sono i vincitori</label>
+       <small id="champs"></small></p>
+    <p id="err" role="alert"></p>
+    <button id="create" class="primary">Avvia la Mietitura</button>
+    <button id="back">Torna alla partita</button>
+  </div>
+  <div><h2>Storico delle edizioni</h2><div id="history"></div></div>
+</section>
+
+<main>
+  <section>
+    <h2 title="Media della posizione in quota e in uccisioni, tra i tributi vivi">Favoriti</h2><div id="board"></div>
+    <h2>Tributi</h2><div id="list"></div>
+  </section>
+  <section><h2 id="arena-title">Arena</h2><div id="map"></div><div id="legend"></div></section>
+  <section id="log" aria-live="polite"><h2>Diario del Direttore</h2></section>
+</main>
+<dialog id="card"></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const color = d => d ? `hsl(${(d - 1) * 30} 80% 60%)` : '#9a958f';
+const initials = n => n.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+const BIOMES = {C: ['Cornucopia', '#c9a227'], R: ['Radura', '#7fa65a'], F: ['Foresta', '#2f6b3a'], M: ['Montagne', '#7a7a7a'],
+                P: ['Palude', '#4f5b35'], D: ['Deserto', '#c8b07a'], L: ['Lago', '#3b78b0'], G: ['Giungla', '#1d7a4c'],
+                T: ['Tundra', '#c9d3d8'], V: ['Vulcano', '#8b2e16'], O: ['Rovine', '#8d7b68']};
+const ICON = {Alleanza: '🤝', Combattimento: '⚔️', Fuga: '💨', Morte: '☠️'};
+const METERS = ['intelligence', 'strength', 'dexterity', 'charisma', 'stealth', 'health'];
+const NEXT = {SELEZIONE: '▶ Fase 1: Pre-Giochi', 'PRE-GIOCHI': '▶ Fase 2: Addestramento', FINE: '🏁 Giochi conclusi'};
+let S = null, nLogs = 0, drawn = '', shown;  // shown: edizione mostrata nel diario
+
+
+async function poll() {
+  const s = S = await (await fetch('/api/state?since=' + nLogs)).json();
+  if (s.edition !== shown) {  // primo caricamento o nuova edizione: il diario riparte da zero
+    shown = s.edition; nLogs = 0; drawn = '';
+    $('#log').replaceChildren($('#log h2'));
+    if (s.edition === null) openStart();
+    return;
+  }
+  const alive = s.tributes.filter(t => t.status === 'ALIVE').length;
+  $('#info').textContent = s.edition === null ? 'Nessuna edizione: creane una.'
+    : `Edizione ${s.edition}${s.memorial ? ' della memoria' : ''} · Direttore ${s.model} · Fase ${s.phase} · Giorno ${s.day}`
+      + ` · ${alive}/${s.tributes.length} vivi · zona ±${s.radius}` + (s.busy ? ` · ⏳ ${s.status || 'il Direttore è al lavoro…'}` : '');
+  const btn = $('#next');
+  btn.textContent = NEXT[s.phase] ?? (s.phase ? `▶ Giorno ${s.day + 1}` : '▶ Avanti');
+  btn.disabled = s.busy || !s.phase || s.phase === 'FINE';
+  const key = JSON.stringify([s.tributes, s.events, s.radius]);
+  if (key !== drawn) { drawn = key; renderBoard(s); renderList(s); renderMap(s); }
+  if (s.since === nLogs) appendLogs(s.logs);
+  if ($('#auto').checked && !btn.disabled) next();
+}
+
+function renderBoard(s) {  // favoriti: media della posizione in quota e in uccisioni, tra i vivi
+  const ts = s.tributes.filter(t => t.status === 'ALIVE' && t.odds), odds = t => parseInt(t.odds);
+  const rank = (f, dir) => { const v = ts.map(f).sort((a, b) => dir * (a - b)); return t => v.indexOf(f(t)) + 1; };
+  const byOdds = rank(odds, 1), byKills = rank(t => t.kills_count, -1);
+  const top = ts.map(t => [(byOdds(t) + byKills(t)) / 2, t]).sort((a, b) => a[0] - b[0] || odds(a[1]) - odds(b[1])).slice(0, 5);
+  $('#board').innerHTML = top.length
+    ? '<ol>' + top.map(([, t]) => `<li data-id="${t.id}">${esc(t.name)} <small>D${t.district} · ${t.odds} · ${t.kills_count} uccisioni</small></li>`).join('') + '</ol>'
+    : '<p><small>Disponibile dopo le interviste della Fase 1.</small></p>';
+}
+
+function renderList(s) {
+  const groups = [[null, 'In attesa del Distretto'], ...Array.from({length: 12}, (_, i) => [i + 1, `Distretto ${i + 1}`])];
+  $('#list').innerHTML = groups.map(([d, title]) => {
+    const ts = s.tributes.filter(t => t.district === d);
+    return ts.length ? `<h3>${title}</h3>` + ts.map(t => `<button class="trib ${t.status}" data-id="${t.id}">`
+      + `<span class="dot" style="background:${color(d)}"></span>${esc(t.name)}`
+      + `<small>${t.status === 'ALIVE' ? `VIVO · ${t.health}♥` : 'MORTO'}</small></button>`).join('') : '';
+  }).join('');
+}
+
+function renderMap(s) {
+  const A = s.arena, map = $('#map');
+  if (!A) return map.replaceChildren();
+  const at = {}, ev = {};
+  for (const t of s.tributes) if (t.status === 'ALIVE') (at[t.current_x + ',' + t.current_y] ??= []).push(t);
+  for (const e of s.events) ev[e.x + ',' + e.y] = e.dead.length ? '☠️' : ICON[e.esito] || '•';
+  map.style.setProperty('--cols', A.w + 1);
+  map.style.setProperty('--rows', A.h + 1);
+  $('#arena-title').textContent = `Arena ${A.w}×${A.h}`;
+  const present = new Set(A.rows.join(''));
+  $('#legend').innerHTML = Object.entries(BIOMES).filter(([b]) => present.has(b)).map(([, [n, c]]) => `<span><i style="background:${c}"></i>${n}</span>`).join('')
+    + '<span>🤝 ⚔️ 💨 ultime ore · ☠️ caduti del giorno</span><span>caselle scure: fuori dalla zona sicura</span>';
+  let h = '<div></div>';
+  for (let x = 0; x < A.w; x++) h += `<div class="ax">${x}</div>`;
+  for (let y = 0; y < A.h; y++) {
+    h += `<div class="ax">${y}</div>`;
+    for (let x = 0; x < A.w; x++) {
+      if (A.rows[y][x] === 'X') { h += '<div></div>'; continue; }  // fuori dall'arena
+      const k = x + ',' + y, [bn, bc] = BIOMES[A.rows[y][x]], ts = at[k] || [];
+      const out = Math.max(Math.abs(x - A.c[0]), Math.abs(y - A.c[1])) > s.radius ? ' class="out"' : '';
+      const tip = `(${x},${y}) ${bn}` + (ts.length ? ' — ' + ts.map(t => t.name).join(', ') : '') + (ev[k] ? ' ' + ev[k] : '');
+      const body = ts.length
+        ? `<span class="tok${ts.length > 1 ? ' many' : ''}" style="background:${color(ts[0].district)}">${ts.length > 1 ? ts.length : esc(initials(ts[0].name))}</span>`
+        : ev[k] || '';
+      h += `<div${out} style="background:${bc}" title="${esc(tip)}"${ts.length ? ` data-id="${ts[0].id}"` : ''}>${body}</div>`;
+    }
+  }
+  $('#map').innerHTML = h;
+}
+
+function appendLogs(logs) {
+  const box = $('#log'), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 150;
+  for (const l of logs) {
+    const a = document.createElement('article');
+    a.className = l.kind;
+    a.innerHTML = `<h3>${esc(l.title)}</h3>`
+      + (l.table ? `<table><tr>${l.table.cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>`
+        + l.table.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('') + '</table>' : '')
+      + `<p>${esc(l.text)}</p>`;
+    box.append(a);
+  }
+  nLogs += logs.length;
+  if (atEnd && logs.length) box.scrollTop = box.scrollHeight;
+}
+
+function card(id) {
+  const t = S.tributes.find(t => t.id === id);
+  if (!t) return;
+  const val = (k, v) => k === 'personality_traits' && v ? JSON.parse(v).join(', ') : v ?? '—';
+  $('#card').innerHTML = `<h2 style="color:${color(t.district)}">${esc(t.name)} · Distretto ${t.district ?? '?'}</h2><table>`
+    + Object.entries(t).map(([k, v]) => `<tr><th>${k}</th><td>${METERS.includes(k) && v !== null ? `<meter min="0" max="100" value="${v}"></meter> ` : ''}${esc(val(k, v))}</td></tr>`).join('')
+    + '</table><form method="dialog"><button>Chiudi</button></form>';
+  $('#card').showModal();
+}
+
+async function openStart() {
+  const h = await (await fetch('/api/editions')).json();
+  const current = h.editions[0];
+  $('#ed-next').textContent = `Edizione ${h.next}`;
+  $('#memorial').disabled = h.champions < 24;
+  $('#memorial').checked &&= !$('#memorial').disabled;
+  $('#champs').textContent = `(${h.champions}/24 vincitori nell'albo d'oro)`;
+  $('#back').disabled = !current;
+  $('#err').textContent = '';
+  $('#history').innerHTML = h.editions.map(e => {
+    const how = e.winner ? `🏆 ${esc(e.winner.name)} (D${e.winner.district}, ${e.winner.kills_count} uccisioni) in ${e.day_number} giorni`
+      : e === current ? `in corso · ${e.current_phase} · giorno ${e.day_number}` : `interrotta al giorno ${e.day_number}`;
+    return `<details><summary>Edizione ${e.id}${e.memorial ? ' della memoria' : ''} · ${e.created_at.slice(0, 10)} · ${how}</summary>`
+      + '<table><tr><th>Tributo</th><th>D</th><th>Esito</th><th>Uccisioni</th></tr>'
+      + e.tributes.map(t => `<tr><td>${esc(t.name)}</td><td>${t.district ?? '—'}</td>`
+        + `<td>${t.id === e.winner_id ? '🏆 vincitore' : t.status === 'DEAD' ? '☠️ morto' : 'in gara'}</td><td>${t.kills_count}</td></tr>`).join('')
+      + '</table></details>';
+  }).join('') || '<p>Nessuna edizione: questa sarà la prima.</p>';
+  $('main').hidden = true;
+  $('#start').hidden = false;
+}
+
+function closeStart() { $('#start').hidden = true; $('main').hidden = false; }
+
+async function next() { await fetch('/api/next', {method: 'POST'}); }
+
+$('#next').onclick = next;
+$('#editions').onclick = openStart;
+$('#back').onclick = closeStart;
+$('#board').onclick = $('#list').onclick = $('#map').onclick = e => { const el = e.target.closest('[data-id]'); if (el) card(+el.dataset.id); };
+$('#create').onclick = async () => {
+  if (S?.edition && S.phase !== 'FINE' && !confirm(`L'edizione ${S.edition} non è finita: resterà interrotta. Continuare?`)) return;
+  const names = $('#names').value.split('\n').map(n => n.trim()).filter(Boolean);
+  const r = await fetch('/api/new', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                     body: JSON.stringify({names, memorial: $('#memorial').checked})});
+  if (!r.ok) return $('#err').textContent = (await r.json()).error;
+  $('#names').value = '';
+  closeStart();
+};
+
+(async function loop() {
+  try { await poll(); } catch { $('#info').textContent = 'Server non raggiungibile, riprovo…'; }
+  setTimeout(loop, 1000);
+})();
+</script>
+</body>
+</html>

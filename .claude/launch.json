@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hungergames",
+      "runtimeExecutable": "C:\\Users\\matteo.piana\\Desktop\\HungerGames\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": ["C:\\Users\\matteo.piana\\Desktop\\HungerGames\\app.py"],
+      "port": 5001
+    }
+  ]
+}

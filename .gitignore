@@ -2,3 +2,5 @@
 __pycache__/
 *.db-wal
 *.db-shm
+build/
+*.spec

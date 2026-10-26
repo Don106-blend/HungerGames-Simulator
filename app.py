@@ -9,6 +9,7 @@ import os
 import random
 import re
 import sqlite3
+import sys
 import threading
 import time
 import urllib.request
@@ -19,8 +20,9 @@ from flask import Flask, request, send_file
 
 from pool import ARCHETYPES, POOL
 
-ROOT = Path(__file__).parent
-DB = ROOT / "hunger_games.db"
+FROZEN = getattr(sys, "frozen", False)  # avviato come eseguibile PyInstaller
+ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))  # dove sta index.html
+DB = (Path(sys.executable).parent if FROZEN else ROOT) / "hunger_games.db"  # il DB resta accanto all'exe
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3:8b")
 OLLAMA = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 VISION, WANDER = 5, 0.15   # raggio di visione, probabilità di un passo casuale
@@ -655,4 +657,7 @@ def api_next():
 
 if __name__ == "__main__":
     init_db()
+    if FROZEN:  # l'exe apre da solo la pagina appena il server è su
+        import webbrowser
+        threading.Timer(1.5, webbrowser.open, ["http://localhost:5001"]).start()
     app.run(port=5001, threaded=True)

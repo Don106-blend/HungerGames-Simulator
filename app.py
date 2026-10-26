@@ -22,7 +22,9 @@ from pool import ARCHETYPES, POOL
 
 FROZEN = getattr(sys, "frozen", False)  # avviato come eseguibile PyInstaller
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).parent))  # dove sta index.html
-DB = (Path(sys.executable).parent if FROZEN else ROOT) / "hunger_games.db"  # il DB resta accanto all'exe
+HOME = Path(sys.executable).parent if FROZEN else ROOT
+# l'exe dentro dist/ del progetto condivide il DB del progetto; copiato altrove, usa quello accanto a sé
+DB = HOME.parent / "hunger_games.db" if FROZEN and (HOME.parent / "app.py").exists() else HOME / "hunger_games.db"
 MODEL = os.environ.get("OLLAMA_MODEL", "llama3:8b")
 OLLAMA = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 VISION, WANDER = 5, 0.15   # raggio di visione, probabilità di un passo casuale

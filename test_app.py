@@ -25,8 +25,14 @@ def fake_director(pacifist):
     return lambda prompt, schema: fill(schema)
 
 
-def finish():
-    for _ in range(40):
+def finish():  # all'alba di ogni giornata l'IA aspetta l'evento: qui si risponde "nessun evento"
+    for _ in range(400):
+        with app.db() as con:
+            g = app.game(con)
+        if g["current_phase"] == "FINE":
+            break
+        if g["current_phase"] in ("ADDESTRAMENTO", "ATTESA") and g["event_day"] != g["day_number"] + 1:
+            assert app.answer_event("")
         app.next_step()
     with app.db() as con:
         return app.game(con), app.tributes(con)
@@ -71,9 +77,9 @@ def main():
     for _ in range(30):
         A = app.new_arena()
         C = tuple(A["c"])
-        assert 32 <= A["w"] <= 48 and 32 <= A["h"] <= 48 and len(A["rows"]) == A["h"]
+        assert 32 <= A["w"] <= 64 and 32 <= A["h"] <= 64 and len(A["rows"]) == A["h"]
         assert all(app.walkable(A, (x, y)) for x in range(C[0] - 4, C[0] + 5) for y in range(C[1] - 4, C[1] + 5))
-        assert app.zone(A, 7) == 0 and app.zone(A, 1) == A["r0"]
+        assert app.zone(A, 0) == A["r0"] and app.zone(A, 5) == 0
         for y in range(A["h"]):
             for x in range(A["w"]):
                 if app.walkable(A, (x, y)):

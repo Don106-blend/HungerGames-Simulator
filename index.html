@@ -36,6 +36,16 @@
   #map .ax { font-size: calc(40cqw / var(--cols)); color: var(--muted); }
   #map .out { filter: brightness(.35) grayscale(.6); }
   #map [data-id] { cursor: pointer; }
+  .arena { --cols: 33; --rows: 33; display: grid; grid-template: repeat(var(--rows), 1fr) / repeat(var(--cols), 1fr);
+           aspect-ratio: var(--cols) / var(--rows); width: 100%; max-width: 520px; container-type: inline-size; margin-bottom: 8px; }
+  .arena > div { display: grid; place-items: center; overflow: hidden; font-size: calc(50cqw / var(--cols)); }
+  .arena .ax { font-size: calc(40cqw / var(--cols)); color: var(--muted); }
+  .arena > div[data-x] { cursor: pointer; }
+  .arena > div[data-x]:hover { outline: 1px solid var(--fire); }
+  #ask { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  #ask b { color: var(--fire); }
+  #ask textarea { flex: 1 1 320px; }
+  #pods-list div { padding: 2px 0; }
   .tok { width: 90%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 50%; color: #111; font-weight: 700; box-shadow: 0 0 0 1px #000; }
   .tok.many { box-shadow: 0 0 0 2px #fff; }
   #legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--muted); }
@@ -46,6 +56,16 @@
   #log .report, #log .interview { border-color: #4a90d9; }
   #log .day { border-color: var(--fire); }
   #log .win { border-color: gold; }
+  #log .scene { border-color: #6aa84f; }
+  #log .trap { border-color: #d98c3f; }
+  #log .event_day { border-color: #e0b84f; }
+  #log .item { border-color: #9a958f; }
+  #log .creature { border-color: #b35cc7; }
+  #log .vs { margin: 0 0 4px; font-weight: 600; color: var(--fire); }
+  body:not(.slow) #log .vs { display: none; }
+  body.slow #log article { font-size: 19px; line-height: 1.6; }
+  body.slow #log h3 { font-size: 21px; }
+  body.slow #log table { font-size: 15px; }
   #log .error { border-color: #e05252; color: #f19999; }
   #log h3 { margin: 0 0 4px; font-size: 13px; }
   #log p { margin: 0; white-space: pre-wrap; }
@@ -87,11 +107,36 @@
     <textarea id="names" rows="14" spellcheck="false" placeholder="Lascia vuoto per 24 tributi casuali"></textarea>
     <p><label><input type="checkbox" id="memorial"> Edizione della memoria: il pool sono i vincitori</label>
        <small id="champs"></small></p>
+    <div id="pods">
+      <p><button id="draft">🗺️ Genera la mappa</button>
+         <small>Poi clicca una casella per metterci un baccello: un evento o una creatura che i tributi incontreranno.</small></p>
+      <div id="pmap" class="arena" hidden></div>
+      <form id="pod-form" hidden>
+        <p><b>Baccello in <span id="pod-cell"></span></b></p>
+        <p><input id="pod-title" maxlength="60" placeholder="Titolo (es. Cane mutante)" style="width:100%"></p>
+        <p><textarea id="pod-desc" rows="2" maxlength="500" placeholder="Descrizione: cosa è e cosa succede a chi ci passa sopra"></textarea></p>
+        <p>Tipo <select id="pod-kind">
+             <option value="trap">Trappola: ferma, scatta una volta</option>
+             <option value="entity">Entità: si attiva e si muove</option>
+             <option value="object">Oggetto: esce un oggetto da raccogliere</option>
+           </select>
+           PV <input type="number" id="pod-hp" min="1" max="100" value="30" disabled style="width:4.5em"></p>
+        <p><button id="pod-add" type="button" class="primary">Aggiungi baccello</button>
+           <button id="pod-cancel" type="button">Annulla</button></p>
+      </form>
+      <div id="pods-list"></div>
+    </div>
     <p id="err" role="alert"></p>
     <button id="create" class="primary">Avvia la Mietitura</button>
     <button id="back">Torna alla partita</button>
   </div>
   <div><h2>Storico delle edizioni</h2><div id="history"></div></div>
+</section>
+
+<section id="ask" hidden>
+  <b>⏳ Il Direttore aspetta l'evento per il Giorno <span id="ask-day"></span></b>
+  <textarea id="ask-text" rows="2" placeholder="Un evento per tutta la giornata (lascia vuoto per nessuno)"></textarea>
+  <div><button id="ask-go" class="primary">Avvia evento</button> <button id="ask-none">Nessun evento</button></div>
 </section>
 
 <main>
@@ -111,32 +156,107 @@ const color = d => d ? `hsl(${(d - 1) * 30} 80% 60%)` : '#9a958f';
 const initials = n => n.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
 const BIOMES = {C: ['Cornucopia', '#c9a227'], R: ['Radura', '#7fa65a'], F: ['Foresta', '#2f6b3a'], M: ['Montagne', '#7a7a7a'],
                 P: ['Palude', '#4f5b35'], D: ['Deserto', '#c8b07a'], L: ['Lago', '#3b78b0'], G: ['Giungla', '#1d7a4c'],
-                T: ['Tundra', '#c9d3d8'], V: ['Vulcano', '#8b2e16'], O: ['Rovine', '#8d7b68']};
+                T: ['Tundra', '#c9d3d8'], V: ['Vulcano', '#8b2e16'], O: ['Rovine', '#8d7b68'],
+                S: ['Savana', '#b9a94a'], B: ['Bambuseto', '#5f8f3a'], H: ['Scogliera', '#6b6f73'],
+                E: ['Brughiera', '#8c7a4b'], W: ['Cascata', '#2c8fbf']};
 const ICON = {Alleanza: '🤝', Combattimento: '⚔️', Fuga: '💨', Morte: '☠️'};
 const METERS = ['intelligence', 'strength', 'dexterity', 'charisma', 'stealth', 'health'];
 const NEXT = {SELEZIONE: '▶ Fase 1: Pre-Giochi', 'PRE-GIOCHI': '▶ Fase 2: Addestramento', FINE: '🏁 Giochi conclusi'};
-let S = null, nLogs = 0, drawn = '', shown;  // shown: edizione mostrata nel diario
+let S = null, shown, drawn = '';  // shown: edizione mostrata nel diario; drawn: ultima mappa disegnata
+let beats = [], reveal = -1, inDiary = 0;  // beats: i testi dell'edizione; reveal: ultimo letto; inDiary: quanti ne ha il diario
+let restored = false, lastStep = 0;  // lastStep: quando è avanzata la lettura in automatico
+const UPDATE_MS = 10000;  // in Auto, se si è indietro rispetto all'IA: un aggiornamento ogni 10 secondi
+const auto = () => $('#auto').checked;
+const readKey = () => `hg-letto-${shown}-${S?.started}`;  // dove si è letto, per edizione (e per partita, se un numero si riusa)
 
 
 async function poll() {
-  const s = S = await (await fetch('/api/state?since=' + nLogs)).json();
+  const s = S = await (await fetch('/api/state?since=' + beats.length)).json();
   if (s.edition !== shown) {  // primo caricamento o nuova edizione: il diario riparte da zero
-    shown = s.edition; nLogs = 0; drawn = '';
+    shown = s.edition; beats = []; reveal = -1; inDiary = 0; drawn = ''; restored = false;
     $('#log').replaceChildren($('#log h2'));
     if (s.edition === null) openStart();
     return;
   }
-  const alive = s.tributes.filter(t => t.status === 'ALIVE').length;
-  $('#info').textContent = s.edition === null ? 'Nessuna edizione: creane una.'
-    : `Edizione ${s.edition}${s.memorial ? ' della memoria' : ''} · Direttore ${s.model} · Fase ${s.phase} · Giorno ${s.day}`
-      + ` · ${alive}/${s.tributes.length} vivi · zona ±${s.radius}` + (s.busy ? ` · ⏳ ${s.status || 'il Direttore è al lavoro…'}` : '');
+  if (s.since === beats.length) {
+    const caught = reveal >= beats.length - 1;  // eravamo in pari con l'IA: in automatico i nuovi testi arrivano subito
+    beats.push(...s.logs);
+    if (restored && auto() && caught) reveal = beats.length - 1;
+  }
+  if (!restored && beats.length) restore();
+  // l'IA lavora in background anche in modalità lenta: chi legge non la rallenta
+  if (s.phase && s.phase !== 'FINE' && !s.busy && !s.problem && !s.awaiting) next();
+  render();
+}
+
+function restore() {  // riparte da dove si era letto; senza memoria, in automatico si va in pari con l'IA
+  restored = true;
+  let saved = null;
+  try { saved = localStorage.getItem(readKey()); } catch {}  // il browser può non avere spazio di memoria: si va avanti lo stesso
+  const n = Number(saved);
+  reveal = saved !== null && Number.isInteger(n) ? Math.min(n, beats.length - 1) : auto() ? beats.length - 1 : -1;
+  lastStep = Date.now();
+}
+
+function saveRead() {
+  try { localStorage.setItem(readKey(), reveal); } catch {}
+}
+
+function renderAsk(s) {  // il banner compare solo quando chi legge arriva alla fine della giornata, non appena l'IA la finisce
+  const show = !!s.awaiting && reveal >= s.awaiting_at - 1;
+  $('#ask').hidden = !show;
+  if (show) $('#ask-day').textContent = s.awaiting;
+}
+
+async function answerEvent(text) {
+  const r = await fetch('/api/event', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text})});
+  if (r.ok) $('#ask-text').value = '';
+  else $('#info').textContent = (await r.json()).error;
+}
+
+function view(s) {  // ciò che si vede: in modalità lenta, o in automatico se si è indietro, la fotografia del testo letto; altrimenti lo stato vivo
+  const frame = (!auto() || reveal < beats.length - 1) && beats[Math.max(reveal, 0)]?.frame;
+  const src = frame || s;  // la fotografia e lo stato vivo hanno gli stessi nomi di campo
+  const marks = {};  // dal basso verso l'alto: oggetti, baccelli, trappole, creature, poi gli eventi
+  for (const [x, y] of src.ground ?? []) marks[x + ',' + y] = '🎒';
+  for (const [x, y, st] of src.pods ?? []) if (st === 'SET') marks[x + ',' + y] = '🥚';
+  for (const [x, y] of src.traps ?? []) marks[x + ',' + y] = '🪤';
+  for (const [x, y, , st] of src.ents ?? []) if (st === 'ALIVE') marks[x + ',' + y] = '👾';
+  Object.assign(marks, frame ? frame.marks : Object.fromEntries(s.events.map(e => [e.x + ',' + e.y, e.dead.length ? '☠️' : ICON[e.esito] || '•'])));
+  const inv = src.inv ?? {};
+  const tributes = s.tributes.map(t => {
+    const base = {...t, inventory: (inv[t.id] ?? []).join(', ') || 'nessuno'};
+    if (!frame) return base;
+    const [x, y, status, health, kills, district, odds] = frame.t[t.id];
+    return {...base, current_x: x, current_y: y, status, health, kills_count: kills, district, odds};
+  });
+  return frame ? {...s, day: frame.day, radius: frame.radius, marks, tributes} : {...s, marks, tributes};
+}
+
+function render() {  // tutto si ridisegna da S; la lettura avanza con Continua, o in automatico a passi di 10 secondi
+  const s = S, live = auto() && reveal >= beats.length - 1;  // live: in pari con l'IA, si vede lo stato vivo
+  if (auto() && !live && Date.now() - lastStep >= UPDATE_MS) { reveal++; lastStep = Date.now(); }
+  if (reveal >= 0) saveRead();
+  renderAsk(s);
+  const v = view(s), ready = reveal + 1 < beats.length;
+  document.body.classList.toggle('slow', !auto());
+  syncDiary();
+  const alive = v.tributes.filter(t => t.status === 'ALIVE').length;
+  const ai = s.problem ? `⚠️ ${s.problem}` : `Direttore ${s.model}`;
+  $('#info').textContent = s.edition === null ? `Nessuna edizione: creane una. · ${ai}`
+    : `Edizione ${s.edition}${s.memorial ? ' della memoria' : ''} · ${ai} · Fase ${s.phase === 'ATTESA' ? 'GIOCHI' : s.phase} · Giorno ${v.day}`
+      + ` · ${alive}/${v.tributes.length} vivi · zona ±${v.radius}`
+      + (s.busy ? ` · ⏳ ${live ? s.status || 'il Direttore è al lavoro…' : "l'IA lavora in background"}` : '');
   const btn = $('#next');
-  btn.textContent = NEXT[s.phase] ?? (s.phase ? `▶ Giorno ${s.day + 1}` : '▶ Avanti');
-  btn.disabled = s.busy || !s.phase || s.phase === 'FINE';
-  const key = JSON.stringify([s.tributes, s.events, s.radius]);
-  if (key !== drawn) { drawn = key; renderBoard(s); renderList(s); renderMap(s); }
-  if (s.since === nLogs) appendLogs(s.logs);
-  if ($('#auto').checked && !btn.disabled) next();
+  if (auto()) {
+    btn.textContent = NEXT[s.phase] ?? (s.phase ? `▶ Giorno ${s.day + 1}` : '▶ Avanti');
+    btn.disabled = s.busy || !s.phase || s.phase === 'FINE' || !!s.problem;
+  } else {
+    btn.textContent = ready ? '▶ Continua' : s.phase === 'FINE' ? '🏁 Giochi conclusi' : s.problem ? '⚠️ IA non pronta' : "⏳ In attesa dell'IA…";
+    btn.disabled = !ready;
+  }
+  const key = JSON.stringify([v.tributes, v.marks, v.radius]);
+  if (key !== drawn) { drawn = key; renderBoard(v); renderList(v); renderMap(v); }
 }
 
 function renderBoard(s) {  // favoriti: media della posizione in quota e in uccisioni, tra i vivi
@@ -164,20 +284,21 @@ function renderMap(s) {
   if (!A) return map.replaceChildren();
   const at = {}, ev = {};
   for (const t of s.tributes) if (t.status === 'ALIVE') (at[t.current_x + ',' + t.current_y] ??= []).push(t);
-  for (const e of s.events) ev[e.x + ',' + e.y] = e.dead.length ? '☠️' : ICON[e.esito] || '•';
+  Object.assign(ev, s.marks);
   map.style.setProperty('--cols', A.w + 1);
   map.style.setProperty('--rows', A.h + 1);
   $('#arena-title').textContent = `Arena ${A.w}×${A.h}`;
   const present = new Set(A.rows.join(''));
-  $('#legend').innerHTML = Object.entries(BIOMES).filter(([b]) => present.has(b)).map(([, [n, c]]) => `<span><i style="background:${c}"></i>${n}</span>`).join('')
-    + '<span>🤝 ⚔️ 💨 ultime ore · ☠️ caduti del giorno</span><span>caselle scure: fuori dalla zona sicura</span>';
+  $('#legend').innerHTML = [...present].filter(b => b !== 'X').map(b => biomeOf(A, b)).map(([n, c]) => `<span><i style="background:${c}"></i>${n}</span>`).join('')
+    + '<span>🤝 ⚔️ 💨 ultime ore · ☠️ caduti del giorno</span><span>🥚 baccello · 🪤 trappola · 👾 creatura · 🎒 oggetto a terra</span>'
+    + '<span>caselle scure: fuori dalla zona sicura</span>';
   let h = '<div></div>';
   for (let x = 0; x < A.w; x++) h += `<div class="ax">${x}</div>`;
   for (let y = 0; y < A.h; y++) {
     h += `<div class="ax">${y}</div>`;
     for (let x = 0; x < A.w; x++) {
       if (A.rows[y][x] === 'X') { h += '<div></div>'; continue; }  // fuori dall'arena
-      const k = x + ',' + y, [bn, bc] = BIOMES[A.rows[y][x]], ts = at[k] || [];
+      const k = x + ',' + y, [bn, bc] = biomeOf(A, A.rows[y][x]), ts = at[k] || [];
       const out = Math.max(Math.abs(x - A.c[0]), Math.abs(y - A.c[1])) > s.radius ? ' class="out"' : '';
       const tip = `(${x},${y}) ${bn}` + (ts.length ? ' — ' + ts.map(t => t.name).join(', ') : '') + (ev[k] ? ' ' + ev[k] : '');
       const body = ts.length
@@ -189,29 +310,87 @@ function renderMap(s) {
   $('#map').innerHTML = h;
 }
 
-function appendLogs(logs) {
-  const box = $('#log'), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 150;
-  for (const l of logs) {
-    const a = document.createElement('article');
-    a.className = l.kind;
-    a.innerHTML = `<h3>${esc(l.title)}</h3>`
-      + (l.table ? `<table><tr>${l.table.cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>`
-        + l.table.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('') + '</table>' : '')
-      + `<p>${esc(l.text)}</p>`;
-    box.append(a);
-  }
-  nLogs += logs.length;
-  if (atEnd && logs.length) box.scrollTop = box.scrollHeight;
+function article(l) {
+  const a = document.createElement('article');
+  a.className = l.kind;
+  a.innerHTML = `<h3>${esc(l.title)}</h3>`
+    + (l.table ? `<table><tr>${l.table.cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr>`
+      + l.table.rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('') + '</table>' : '')
+    + (l.vs ? `<p class="vs">${esc(l.vs)}</p>` : '')
+    + `<p>${esc(l.text)}</p>`;
+  return a;
+}
+
+function syncDiary() {  // il diario mostra i testi fino a quello letto: tutti subito in automatico, uno alla volta in lenta
+  const box = $('#log'), atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 150, from = inDiary;
+  for (; inDiary <= reveal; inDiary++) box.append(article(beats[inDiary]));
+  if (inDiary > from && (atEnd || !auto())) box.scrollTop = box.scrollHeight;
 }
 
 function card(id) {
-  const t = S.tributes.find(t => t.id === id);
+  const t = view(S).tributes.find(t => t.id === id);
   if (!t) return;
   const val = (k, v) => k === 'personality_traits' && v ? JSON.parse(v).join(', ') : v ?? '—';
   $('#card').innerHTML = `<h2 style="color:${color(t.district)}">${esc(t.name)} · Distretto ${t.district ?? '?'}</h2><table>`
     + Object.entries(t).map(([k, v]) => `<tr><th>${k}</th><td>${METERS.includes(k) && v !== null ? `<meter min="0" max="100" value="${v}"></meter> ` : ''}${esc(val(k, v))}</td></tr>`).join('')
     + '</table><form method="dialog"><button>Chiudi</button></form>';
   $('#card').showModal();
+}
+
+const EXTRA_COLORS = ['#a0522d', '#708090', '#9acd32', '#dda0dd', '#4682b4', '#d2691e', '#bc8f8f', '#556b2f', '#8fbc8f', '#cd853f'];
+function biomeOf(A, ch) {  // nome e colore di un bioma: quelli base e quelli nati da un evento
+  const extra = A?.biomes?.[ch];
+  if (extra) return [extra.name, EXTRA_COLORS[ch.charCodeAt(0) % EXTRA_COLORS.length]];
+  return BIOMES[ch];
+}
+
+let draftArena = null, draftPods = [], pendingCell = null;  // mappa in anteprima per i baccelli, e il baccello in corso
+
+function drawDraft() {
+  const A = draftArena, box = $('#pmap');
+  box.hidden = !A;
+  if (!A) return box.replaceChildren();
+  box.style.setProperty('--cols', A.w + 1);
+  box.style.setProperty('--rows', A.h + 1);
+  const at = Object.fromEntries(draftPods.map(p => [p.x + ',' + p.y, p]));
+  let h = '<div></div>';
+  for (let x = 0; x < A.w; x++) h += `<div class="ax">${x}</div>`;
+  for (let y = 0; y < A.h; y++) {
+    h += `<div class="ax">${y}</div>`;
+    for (let x = 0; x < A.w; x++) {
+      if (A.rows[y][x] === 'X') { h += '<div></div>'; continue; }
+      const [bn, bc] = biomeOf(A, A.rows[y][x]), pod = at[x + ',' + y];
+      h += `<div data-x="${x}" data-y="${y}" style="background:${bc}" title="(${x},${y}) ${bn}${pod ? ' — ' + esc(pod.title) : ''}">${pod ? '🥚' : ''}</div>`;
+    }
+  }
+  box.innerHTML = h;
+}
+
+function renderPods() {
+  $('#pods-list').innerHTML = draftPods.map((p, i) => `<div>🥚 (${p.x},${p.y}) <b>${esc(p.title)}</b> · `
+    + `${p.kind === 'entity' ? `entità, ${p.hp} PV` : p.kind === 'object' ? 'oggetto' : 'trappola'} <button data-rm="${i}">✕</button></div>`).join('');
+}
+
+function openPod(x, y) {
+  pendingCell = [x, y];
+  $('#pod-cell').textContent = `(${x},${y}) ${biomeOf(draftArena, draftArena.rows[y][x])[0]}`;
+  $('#pod-title').value = '';
+  $('#pod-desc').value = '';
+  $('#pod-form').hidden = false;
+  $('#pod-title').focus();
+}
+
+function addPod() {
+  const title = $('#pod-title').value.trim(), description = $('#pod-desc').value.trim();
+  const kind = $('#pod-kind').value, hp = +$('#pod-hp').value;
+  const [x, y] = pendingCell;
+  if (!title || !description) return $('#err').textContent = 'Il baccello ha bisogno di un titolo e di una descrizione.';
+  if (kind === 'entity' && !(hp >= 1 && hp <= 100)) return $('#err').textContent = "I punti vita dell'entità vanno da 1 a 100.";
+  draftPods = draftPods.filter(p => p.x !== x || p.y !== y).concat({x, y, title, description, kind, hp: kind === 'entity' ? hp : null});
+  $('#pod-form').hidden = true;
+  $('#err').textContent = '';
+  drawDraft();
+  renderPods();
 }
 
 async function openStart() {
@@ -240,7 +419,25 @@ function closeStart() { $('#start').hidden = true; $('main').hidden = false; }
 
 async function next() { await fetch('/api/next', {method: 'POST'}); }
 
-$('#next').onclick = next;
+$('#next').onclick = () => { if (auto()) return next(); reveal++; render(); };
+$('#auto').onchange = () => { lastStep = Date.now(); render(); };
+$('#ask-go').onclick = () => answerEvent($('#ask-text').value.trim());
+$('#ask-none').onclick = () => answerEvent('');
+$('#draft').onclick = async () => {
+  draftArena = (await (await fetch('/api/arena')).json()).arena;
+  draftPods = [];
+  drawDraft();
+  renderPods();
+  $('#pod-form').hidden = true;
+};
+$('#pmap').onclick = e => { const c = e.target.closest('[data-x]'); if (c) openPod(+c.dataset.x, +c.dataset.y); };
+$('#pod-kind').onchange = () => { $('#pod-hp').disabled = $('#pod-kind').value !== 'entity'; };
+$('#pod-add').onclick = addPod;
+$('#pod-cancel').onclick = () => { $('#pod-form').hidden = true; };
+$('#pods-list').onclick = e => {
+  const b = e.target.closest('[data-rm]');
+  if (b) { draftPods.splice(+b.dataset.rm, 1); drawDraft(); renderPods(); }
+};
 $('#editions').onclick = openStart;
 $('#back').onclick = closeStart;
 $('#board').onclick = $('#list').onclick = $('#map').onclick = e => { const el = e.target.closest('[data-id]'); if (el) card(+el.dataset.id); };
@@ -248,9 +445,14 @@ $('#create').onclick = async () => {
   if (S?.edition && S.phase !== 'FINE' && !confirm(`L'edizione ${S.edition} non è finita: resterà interrotta. Continuare?`)) return;
   const names = $('#names').value.split('\n').map(n => n.trim()).filter(Boolean);
   const r = await fetch('/api/new', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                     body: JSON.stringify({names, memorial: $('#memorial').checked})});
+                                     body: JSON.stringify({names, memorial: $('#memorial').checked, arena: draftArena, pods: draftPods})});
   if (!r.ok) return $('#err').textContent = (await r.json()).error;
   $('#names').value = '';
+  draftArena = null;
+  draftPods = [];
+  drawDraft();
+  renderPods();
+  $('#pod-form').hidden = true;
   closeStart();
 };
 
